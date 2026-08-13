@@ -1,3 +1,4 @@
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase, isSupabaseConfigured } from './supabase'
 import { normalizeUsername } from './local-db'
 import type { AppDB, ChallengeInput, ProfileInput, SessionUser, TaskInput } from './db'
@@ -60,6 +61,46 @@ function notConfigured(): never {
 function tables() {
   if (!supabase) return notConfigured()
   return supabase
+}
+
+interface RealtimeSubscription {
+  channel: RealtimeChannel
+  handlers: Set<() => void>
+}
+
+const realtimeSubscriptions = new Map<string, RealtimeSubscription>()
+let realtimeChannelSeq = 0
+
+function subscribeRealtime(key: string, filter: string, cb: () => void): () => void {
+  if (!supabase) return () => {}
+  const client = supabase
+  const existing = realtimeSubscriptions.get(key)
+  if (existing) {
+    existing.handlers.add(cb)
+    return () => {
+      existing.handlers.delete(cb)
+      if (existing.handlers.size === 0) {
+        realtimeSubscriptions.delete(key)
+        client.removeChannel(existing.channel)
+      }
+    }
+  }
+  const handlers = new Set<() => void>([cb])
+  const channel = client
+    .channel(`${key}:${++realtimeChannelSeq}`)
+    .on('postgres_changes', { event: '*', schema: 'public', filter }, () => {
+      handlers.forEach((h) => h())
+    })
+  const entry: RealtimeSubscription = { channel, handlers }
+  realtimeSubscriptions.set(key, entry)
+  channel.subscribe()
+  return () => {
+    entry.handlers.delete(cb)
+    if (entry.handlers.size === 0) {
+      realtimeSubscriptions.delete(key)
+      client.removeChannel(entry.channel)
+    }
+  }
 }
 
 export const supabaseDB: AppDB = {
@@ -162,12 +203,12 @@ export const supabaseDB: AppDB = {
     const sb = tables()
     const { data, error } = await sb
       .from('challenge_members')
-      .select('challenge:challenges(*), challenges!challenges_owner_id_fkey(id, owner_id, name, description, start_date, end_date, visibility, daily_target, competitive_mode, proof_required, invite_code, created_at)')
+      .select('challenge:challenges(id, owner_id, name, description, start_date, end_date, visibility, daily_target, competitive_mode, proof_required, invite_code, created_at)')
       .eq('user_id', userId)
     if (error) throw error
     const seen = new Map<string, Challenge>()
-    for (const row of (data ?? []) as unknown as { challenge?: Challenge | Challenge[]; challenges?: Challenge | Challenge[] }[]) {
-      const raw = row.challenge ?? row.challenges
+    for (const row of (data ?? []) as unknown as { challenge?: Challenge | Challenge[] }[]) {
+      const raw = row.challenge
       const ch = Array.isArray(raw) ? raw[0] : raw
       if (ch) seen.set(ch.id, ch)
     }
@@ -436,27 +477,11 @@ export const supabaseDB: AppDB = {
   },
 
   subscribeToChallenge(challengeId, cb) {
-    if (!supabase) return () => {}
-    const client = supabase
-    const channel = client
-      .channel(`challenge:${challengeId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', filter: `challenge_id=eq.${challengeId}` }, () => cb())
-      .subscribe()
-    return () => {
-      client.removeChannel(channel)
-    }
+    return subscribeRealtime(`challenge:${challengeId}`, `challenge_id=eq.${challengeId}`, cb)
   },
 
   subscribeToUser(userId, cb) {
-    if (!supabase) return () => {}
-    const client = supabase
-    const channel = client
-      .channel(`user:${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', filter: `user_id=eq.${userId}` }, () => cb())
-      .subscribe()
-    return () => {
-      client.removeChannel(channel)
-    }
+    return subscribeRealtime(`user:${userId}`, `user_id=eq.${userId}`, cb)
   },
 }
 
