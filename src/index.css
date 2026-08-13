@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-background font-sans text-onBackground antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-display;
+  }
+
+  ::selection {
+    @apply bg-primary-fixed text-primary-onFixed;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-surface-containerHighest;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-surface-outline;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+input[type='date']::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+
+input[type='range'] {
+  @apply accent-secondary-container;
+}
+
+@layer components {
+  .bg-accent-gradient {
+    background-image: linear-gradient(135deg, #002d1c 0%, #3e6752 100%);
+  }
+
+  .text-accent-gradient {
+    background-image: linear-gradient(120deg, #1a4331 0%, #3e6752 55%, #d9820b 130%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .card-shadow {
+    box-shadow: 0 4px 20px rgba(0, 45, 28, 0.06);
+  }
+}
